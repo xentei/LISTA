@@ -13,7 +13,7 @@ st.markdown("""
 <style>
 .small-font { font-size:14px !important; color: #666; }
 </style>
-<p class="small-font">Versión Especializada: Lee columnas D y E de la hoja 'LISTA'.</p>
+<p class="small-font">Versión Especializada: Lee hoja 'LISTA' (Columnas D y E).</p>
 """, unsafe_allow_html=True)
 
 # --- 1. CONFIGURACIÓN Y EQUIVALENCIAS ---
@@ -46,7 +46,7 @@ def normalizar_jerarquia(texto):
 def limpiar_nombre(texto):
     if pd.isna(texto): return ""
     texto = str(texto)
-    # 1. Quitar paréntesis y números (10), (30)
+    # 1. Quitar paréntesis y números
     texto = re.sub(r'\([^)]*\)', '', texto)
     # 2. Quitar tildes
     texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
@@ -56,40 +56,24 @@ def limpiar_nombre(texto):
 
 def leer_excel_guardia(archivo):
     """
-    Lógica ESPECÍFICA para la Lista de Guardia:
-    - Hoja: 'LISTA'
-    - Columnas: D (Jerarquía) y E (Nombre)
+    Lee hoja 'LISTA', columnas D (Jerarquia) y E (Nombre).
     """
     try:
-        # Intentamos leer solo la hoja LISTA y las columnas D:E (usecols="D:E")
-        # header=None para leer desde la primera fila y nosotros filtramos
         df = pd.read_excel(archivo, sheet_name='LISTA', usecols="D:E", header=None)
-        
-        # Asignamos nombres fijos
         df.columns = ['Jerarquia', 'Nombre']
         
-        # FILTRO DE BASURA:
-        # Eliminamos filas donde la Jerarquía no sea válida (borra títulos, encabezados, etc.)
-        def es_fila_valida(row):
-            jer = str(row['Jerarquia']).lower()
-            # Si la celda contiene alguna de nuestras palabras clave, es válida
-            return any(k in jer for k in EQUIVALENCIAS.keys())
-
-        # Aplicamos filtro
-        df = df[df.apply(es_fila_valida, axis=1)]
+        def es_valida(row):
+            t = str(row['Jerarquia']).lower()
+            return any(k in t for k in EQUIVALENCIAS.keys())
         
+        df = df[df.apply(es_valida, axis=1)]
         return df
-    except ValueError:
-        st.error("❌ No encontré la hoja llamada 'LISTA' en el Excel.")
-        return None
     except Exception as e:
-        st.error(f"Error leyendo la lista: {e}")
+        st.error(f"Error leyendo la hoja 'LISTA': {e}")
         return None
 
 def procesar_generico(texto_input, archivo_input):
-    """
-    Procesador genérico para el PARTE (o si pegan texto en la lista)
-    """
+    """Procesador para el PARTE"""
     df = None
     if archivo_input:
         try:
@@ -97,128 +81,93 @@ def procesar_generico(texto_input, archivo_input):
                 df = pd.read_csv(archivo_input)
             else:
                 df = pd.read_excel(archivo_input)
-            
-            # Normalizamos a 2 columnas
             if len(df.columns) >= 2:
                 df = df.iloc[:, :2]
                 df.columns = ['Jerarquia', 'Nombre']
-        except Exception as e:
-            st.error(f"Error: {e}")
+        except Exception:
             return None
-
     elif texto_input:
         try:
             df = pd.read_csv(StringIO(texto_input), sep='\t', header=None, engine='python')
-            # Detectar encabezados
             if any(x in str(df.iloc[0, 0]).lower() for x in ['jerarquia', 'grado']):
                  df = pd.read_csv(StringIO(texto_input), sep='\t', engine='python')
-            else:
-                df.columns = ['Jerarquia', 'Nombre'] + [f'Col_{i}' for i in range(2, len(df.columns))]
-            
             df = df.iloc[:, :2]
             df.columns = ['Jerarquia', 'Nombre']
         except:
             return None
-    
     return df
 
 # --- 2. BARRA LATERAL ---
 with st.sidebar:
     st.header("⚙️ Configuración")
-    umbral = st.slider("Exigencia de coincidencia", 50, 100, 85)
+    umbral = st.slider("Exigencia", 50, 100, 85)
 
-# --- 3. INTERFAZ PRINCIPAL ---
+# --- 3. INTERFAZ ---
 col1, col2 = st.columns(2)
-
 with col1:
-    st.subheader("📋 1. EL PARTE (Regla)")
-    st.info("Sube el Parte Oficial (Excel normal o texto).")
-    parte_txt = st.text_area("Pegar Parte", height=150, key="p_txt")
-    parte_file = st.file_uploader("Subir Excel Parte", type=["xlsx", "csv"], key="p_file")
+    st.subheader("📋 1. EL PARTE")
+    p_txt = st.text_area("Pegar Parte", height=150)
+    p_file = st.file_uploader("Subir Excel Parte", type=["xlsx", "csv"])
 
 with col2:
     st.subheader("📝 2. LISTA DE GUARDIA")
-    st.info("Busca hoja 'LISTA', columnas D y E.")
-    lista_txt = st.text_area("Pegar (Opción B)", height=150, key="l_txt")
-    lista_file = st.file_uploader("Subir Excel Guardia", type=["xlsx"], key="l_file")
+    l_txt = st.text_area("Pegar (Opción B)", height=150)
+    l_file = st.file_uploader("Subir Excel Guardia", type=["xlsx"])
 
-# --- 4. LÓGICA DE COMPARACIÓN ---
-if st.button("🔍 COMPARAR AHORA", type="primary"):
-    
-    # 1. Procesar PARTE (Genérico)
-    df_parte = procesar_generico(parte_txt, parte_file)
+# --- 4. LÓGICA ---
+if st.button("🔍 COMPARAR", type="primary"):
+    df_p = procesar_generico(p_txt, p_file)
+    df_l = leer_excel_guardia(l_file) if l_file else procesar_generico(l_txt, None)
 
-    # 2. Procesar LISTA (Específico Excel Guardia o Genérico Texto)
-    df_lista = None
-    if lista_file:
-        # AQUÍ APLICAMOS LA LÓGICA ESPECIAL
-        df_lista = leer_excel_guardia(lista_file)
-    else:
-        df_lista = procesar_generico(lista_txt, None)
-
-    # Validar
-    if df_parte is not None and df_lista is not None and not df_parte.empty and not df_lista.empty:
+    if df_p is not None and df_l is not None and not df_p.empty and not df_l.empty:
         try:
-            # --- A. LIMPIEZA ---
-            df_parte['jerarquia_norm'] = df_parte['Jerarquia'].apply(normalizar_jerarquia)
-            df_lista['jerarquia_norm'] = df_lista['Jerarquia'].apply(normalizar_jerarquia)
-            
-            df_parte['nombre_limpio'] = df_parte['Nombre'].apply(limpiar_nombre)
-            df_lista['nombre_limpio'] = df_lista['Nombre'].apply(limpiar_nombre)
+            # Normalizar
+            df_p['j_norm'] = df_p['Jerarquia'].apply(normalizar_jerarquia)
+            df_l['j_norm'] = df_l['Jerarquia'].apply(normalizar_jerarquia)
+            df_p['n_clean'] = df_p['Nombre'].apply(limpiar_nombre)
+            df_l['n_clean'] = df_l['Nombre'].apply(limpiar_nombre)
 
-            # --- B. COMPARACIÓN ---
-            sobran = df_lista.copy()
-            sobran['match_encontrado'] = False
-            ausentes_data = []
+            sobran = df_l.copy()
+            sobran['found'] = False
+            faltan = []
 
-            # Recorremos el PARTE buscando en la LISTA
-            for idx_p, row_p in df_parte.iterrows():
-                jerarquia_obj = row_p['jerarquia_norm']
-                nombre_obj = row_p['nombre_limpio']
+            # Comparar
+            for idx_p, row_p in df_p.iterrows():
+                candidatos = sobran[sobran['j_norm'] == row_p['j_norm']]
                 encontrado = False
                 
-                # FILTRO: Solo comparamos con gente de la misma jerarquía
-                candidatos = sobran[sobran['jerarquia_norm'] == jerarquia_obj]
-
                 for idx_l, row_l in candidatos.iterrows():
-                    if row_l['match_encontrado']: continue 
-                    
-                    # COMPARACIÓN FUZZY
-                    ratio = fuzz.token_set_ratio(nombre_obj, row_l['nombre_limpio'])
-                    
-                    if ratio >= umbral:
+                    if row_l['found']: continue
+                    if fuzz.token_set_ratio(row_p['n_clean'], row_l['n_clean']) >= umbral:
                         encontrado = True
-                        sobran.at[idx_l, 'match_encontrado'] = True
+                        sobran.at[idx_l, 'found'] = True
                         break
                 
                 if not encontrado:
-                    # Guardamos los datos para la tabla de faltantes
-                    ausentes_data.append({
-                        'Jerarquia': row_p['Jerarquia'],
-                        'Nombre': row_p['Nombre']
-                    })
+                    faltan.append({'Jerarquia': row_p['Jerarquia'], 'Nombre': row_p['Nombre']})
 
-            # --- C. RESULTADOS EN TABLAS ---
+            # Resultados
             st.divider()
-            r_col1, r_col2 = st.columns(2)
+            c1, c2 = st.columns(2)
             
-            # TABLA 1: FALTA AGREGAR
-            with r_col1:
-                st.success(f"✅ FALTA AGREGAR A LA LISTA ({len(ausentes_data)})")
-                if ausentes_data:
-                    df_ausentes = pd.DataFrame(ausentes_data)
-                    # Mostramos tabla interactiva (copiable)
-                    st.dataframe(df_ausentes, hide_index=True, use_container_width=True)
+            with c1:
+                # AQUÍ ESTÁ LA MAGIA DE LOS GLOBOS 🎈
+                if not faltan:
+                    st.balloons()
+                    st.success("✨ ¡PERFECTO! NO FALTA NADIE ✨")
+                else:
+                    st.warning(f"⚠️ FALTA AGREGAR ({len(faltan)})")
+                    st.dataframe(pd.DataFrame(faltan), hide_index=True, use_container_width=True)
             
-            # TABLA 2: SOBRA / BORRAR
-            with r_col2:
-                df_sobran = sobran[sobran['match_encontrado'] == False]
-                st.error(f"❌ SOBRA / BORRAR DE LA LISTA ({len(df_sobran)})")
-                if not df_sobran.empty:
-                    # Mostramos solo columnas relevantes
-                    st.dataframe(df_sobran[['Jerarquia', 'Nombre']], hide_index=True, use_container_width=True)
+            with c2:
+                sobra_df = sobran[~sobran['found']]
+                if sobra_df.empty:
+                     st.success("✅ LISTA LIMPIA (No sobra nadie)")
+                else:
+                    st.error(f"❌ SOBRA / BORRAR ({len(sobra_df)})")
+                    st.dataframe(sobra_df[['Jerarquia', 'Nombre']], hide_index=True, use_container_width=True)
 
         except Exception as e:
-             st.error(f"Error procesando: {e}")
+            st.error(f"Error: {e}")
     else:
-        st.warning("⚠️ Faltan datos o no se encontró la hoja 'LISTA' en el Excel.")
+        st.warning("⚠️ Faltan datos o el Excel no tiene la hoja 'LISTA'.")
