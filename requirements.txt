@@ -1,6 +1,5 @@
 streamlit
-requests
 pandas
-numpy
-altair
 thefuzz
+openpyxl
+python-levenshtein
