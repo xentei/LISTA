@@ -1,0 +1,5 @@
+flask
+requests
+beautifulsoup4
+gunicorn
+# Agrega aquí cualquier otra librería que uses (ej: pandas, selenium, etc)
