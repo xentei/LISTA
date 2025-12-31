@@ -1,5 +1,5 @@
-flask
+streamlit
 requests
-beautifulsoup4
-gunicorn
-# Agrega aquí cualquier otra librería que uses (ej: pandas, selenium, etc)
+pandas
+numpy
+altair
