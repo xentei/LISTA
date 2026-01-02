@@ -6,7 +6,7 @@ import re
 import unicodedata
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Control PSA V4.0", layout="wide", page_icon="👮‍♂️")
+st.set_page_config(page_title="Control PSA V4.1", layout="wide", page_icon="👮‍♂️")
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -71,12 +71,12 @@ st.markdown("""
         border: 2px solid #1e7e34;
     }
 
-    /* TEXTO JERARQUÍA (CAMBIADO: Grande y visible) */
+    /* TEXTO JERARQUÍA (Grande) */
     .jerarquia-text {
-        font-size: 15px; /* Aumentado */
-        font-weight: 700; /* Negrita */
+        font-size: 15px;
+        font-weight: 700;
         padding-top: 10px; 
-        /* Sin color fijo para que se vea blanco en modo oscuro o negro en claro */
+        color: #555;
     }
     
     /* ENCABEZADOS DE COLUMNA */
@@ -87,7 +87,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ CONTROL DE PERSONAL - V4.0")
+st.title("🛡️ CONTROL DE PERSONAL - V4.1")
 
 # --- 1. CONFIGURACIÓN Y EQUIVALENCIAS ---
 EQUIVALENCIAS = {
@@ -229,8 +229,12 @@ with col_carga2:
         l_txt = st.text_area("Lista", height=68, key="l_txt", label_visibility="collapsed", placeholder="Pegar Lista...")
         l_file = st.file_uploader("Archivo", type=["xlsx"], key=f"l_file_{st.session_state.l_key}", label_visibility="collapsed")
 
-# --- BOTÓN ANÁLISIS ---
+# --- AJUSTES DE PRECISIÓN (RECUPERADO) ---
 st.markdown("<br>", unsafe_allow_html=True)
+with st.expander("⚙️ Ajustes de Precisión (Opcional)"):
+    umbral = st.slider("Nivel de Exigencia (85 recomendado)", 50, 100, 85)
+
+# --- BOTÓN ANÁLISIS ---
 if st.button("🔍 ANALIZAR AHORA", type="primary", use_container_width=True):
     df_p = procesar_generico(p_txt, p_file)
     df_l = leer_excel_inteligente(l_file) if l_file else procesar_generico(l_txt, None)
@@ -246,8 +250,8 @@ if st.button("🔍 ANALIZAR AHORA", type="primary", use_container_width=True):
             sobran['found'] = False
             faltan_temp = []
             
-            umbral = 85 
-
+            # Usamos el umbral del slider
+            
             for idx_p, row_p in df_p.iterrows():
                 candidatos = sobran[sobran['j_norm'] == row_p['j_norm']]
                 encontrado = False
@@ -315,12 +319,11 @@ if st.session_state.analisis_listo:
             for p in faltan_lista:
                 r1, r2, r3 = st.columns([1.2, 3, 0.8])
                 nombre_upper = str(p['Nombre']).upper()
-                # AQUI: Forzamos la jerarquía a mayúsculas
                 jerarquia_upper = str(p['Jerarquia']).upper()
                 is_checked = p['ID'] in st.session_state.checked_items
 
                 with r1: 
-                    # Mostramos jerarquía en mayúscula y estilo grande
+                    # JERARQUÍA EN MAYÚSCULAS Y GRANDE
                     st.markdown(f'<div class="jerarquia-text">{jerarquia_upper}</div>', unsafe_allow_html=True)
 
                 with r2:
@@ -344,7 +347,7 @@ if st.session_state.analisis_listo:
         if sobran_df.empty:
              st.markdown('<div class="bordo-msg">NO HACE FALTA BORRAR A NADIE</div>', unsafe_allow_html=True)
         else:
-            # VOLVEMOS A LA TABLA DE EXCEL (st.dataframe)
+            # TABLA DE EXCEL (st.dataframe)
             st.dataframe(
                 sobran_df[['Jerarquia', 'Nombre']], 
                 hide_index=True, 
