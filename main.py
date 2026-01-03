@@ -4,49 +4,142 @@ from io import StringIO, BytesIO
 from thefuzz import fuzz
 import re
 import unicodedata
-import openpyxl 
+import openpyxl
+import logging
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Control PSA V6.4", layout="wide", page_icon="🕵️")
+# --- CONFIGURACIÓN ---
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+st.set_page_config(page_title="Control PSA V15.1", layout="wide", page_icon="🛡️")
 
 # --- ESTILOS CSS ---
 st.markdown("""
 <style>
-    .block-container { padding-top: 1rem; padding-bottom: 2rem; }
-    div.stButton > button:first-child {
-        width: 100%; border-radius: 4px; height: 2.5rem; font-weight: bold; border: none;
+    /* 1. FUENTES Y RESET */
+    * {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
     }
-    .stCode { font-family: sans-serif !important; font-size: 15px !important; font-weight: bold; }
-    
-    .success-box {
-        padding: 5px; background-color: #28a745; color: white; border-radius: 4px;
-        text-align: center; font-weight: bold; font-size: 14px; height: 38px;
-        display: flex; align-items: center; justify-content: center;
-    }
-    .delete-box {
-        padding: 5px; background-color: #f8d7da; color: #721c24; border-radius: 4px;
-        border: 1px solid #f5c6cb; text-align: center; font-weight: bold; font-size: 14px;
-        height: 38px; display: flex; align-items: center; justify-content: center;
-    }
-    .warning-box {
-        padding: 10px; background-color: #fff3cd; color: #856404; border-radius: 6px;
-        border: 1px solid #ffeeba; text-align: center; font-weight: bold; font-size: 15px;
-        display: flex; align-items: center; justify-content: center; flex-direction: column;
+    .block-container { 
+        padding-top: 1.5rem; 
+        padding-bottom: 3rem; 
+        max-width: 1400px; 
     }
     
-    .jerarquia-text { font-size: 15px; font-weight: 700; padding-top: 10px; color: #555; }
-    
-    .header-green { color: #28a745; border-bottom: 3px solid #28a745; padding-bottom: 5px; font-weight: 800; font-size: 1.2rem;}
-    .header-red { color: #800020; border-bottom: 3px solid #800020; padding-bottom: 5px; font-weight: 800; font-size: 1.2rem;}
-    .header-yellow { color: #d39e00; border-bottom: 3px solid #d39e00; padding-bottom: 5px; font-weight: 800; font-size: 1.2rem;}
+    /* 2. BOTONES GENERALES */
+    div.stButton > button {
+        border-radius: 6px;
+        font-weight: 800 !important; /* Letra bien gruesa */
+        font-size: 13px;
+        height: 38px;
+        border: none;
+        width: 100%;
+        margin-top: 0px; 
+        transition: all 0.2s;
+    }
 
-    hr { margin: 0.3rem 0 !important; opacity: 0.2; }
+    /* 3. COLORES DE BOTONES */
+    
+    /* PRIMARIO (Analizar, Misma, Listo) -> AMARILLO + TEXTO NEGRO */
+    div.stButton > button[kind="primary"] {
+        background-color: #F5A623 !important; 
+        color: #000000 !important; /* TEXTO NEGRO PARA LEER BIEN */
+        border: 1px solid #F5A623 !important;
+    }
+    div.stButton > button[kind="primary"]:hover {
+        background-color: #D48806 !important;
+        color: #000000 !important;
+        transform: scale(1.02);
+        box-shadow: 0 4px 10px rgba(245, 166, 35, 0.3);
+    }
+    
+    /* SECUNDARIO (Distintos, Borrar, Limpiar) -> PALETA ROJA */
+    div.stButton > button[kind="secondary"] {
+        background-color: rgba(239, 68, 68, 0.1) !important; /* Fondo rojo muy suave */
+        color: #ef4444 !important; /* Texto ROJO brillante */
+        border: 1px solid #7f1d1d !important; /* Borde rojo oscuro */
+    }
+    div.stButton > button[kind="secondary"]:hover {
+        background-color: #ef4444 !important; /* Fondo rojo sólido al pasar mouse */
+        color: #FFFFFF !important; /* Texto blanco */
+        border-color: #ef4444 !important;
+    }
+
+    /* 4. TARJETA DETECTIVE (GRID) */
+    .conflict-container {
+        background-color: #111218;
+        border: 1px solid #333;
+        border-radius: 6px;
+        padding: 0; 
+        display: grid;
+        grid-template-columns: 130px 1fr; /* Jerarquía fija, Nombre flexible */
+        align-items: center;
+        height: 38px; 
+        overflow: hidden;
+    }
+    
+    .c-badge {
+        background-color: #1A1B25;
+        color: #6B7280;
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        justify-content: center; 
+        height: 100%;
+        border-right: 1px solid #333;
+        padding: 0 5px;
+        text-align: center;
+        line-height: 1.1;
+    }
+    
+    .c-name {
+        color: #F3F4F6;
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding-left: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* 5. TABLA RESULTADOS */
+    .row-container {
+        display: flex; align-items: center; height: 38px; 
+        border-bottom: 1px solid #27272a; margin-bottom: 2px;
+    }
+    .unified-text {
+        font-size: 12px; font-weight: 600; color: #E5E7EB; text-transform: uppercase;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+    }
+    .name-ready { background-color: rgba(16, 185, 129, 0.2); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 4px; padding: 2px 8px; width: 100%; }
+
+    /* 6. OTROS */
+    .arrow-icon { font-size: 18px; color: #4B5563; text-align: center; display: block; }
+    
+    /* INPUTS */
+    .stTextArea textarea, .stTextInput input { background-color: #111218 !important; border: 1px solid #374151 !important; color: white !important; }
+    
+    /* COPY HACK */
+    .stCode { font-family: sans-serif !important; }
+    [data-testid="stCodeBlock"] { background: transparent !important; padding: 4px 0 !important; }
+    [data-testid="stCodeBlock"] pre { background: transparent !important; padding: 0 !important; font-family: sans-serif !important; font-size: 12px !important; font-weight: 600 !important; color: #FFF !important; }
+    [data-testid="stCodeBlock"] button { color: #6B7280 !important; }
+
+    /* METRICAS */
+    [data-testid="stMetricValue"] { font-size: 24px !important; color: #F3F4F6 !important; }
+    [data-testid="stMetricLabel"] { font-size: 11px !important; color: #9CA3AF !important; }
+    [data-testid="stMetric"] { background-color: #111218; border: 1px solid #374151; padding: 10px; border-radius: 8px; }
+
+    hr { margin: 15px 0 !important; border-color: #374151 !important; opacity: 1; }
+    .duplicate-alert { padding: 8px; background: rgba(245, 158, 11, 0.1); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 12px; border-radius: 4px; margin-bottom: 10px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🛡️ CONTROL DE PERSONAL - V6.4")
+st.title("🛡️ CONTROL DE PERSONAL")
 
-# --- 1. CONFIGURACIÓN Y EQUIVALENCIAS ---
+# --- CONSTANTES ---
 EQUIVALENCIAS = {
     "oficial ayudante": "OFICIAL AYUDANTE", "of ayte": "OFICIAL AYUDANTE", "of. ayte": "OFICIAL AYUDANTE", "ayte": "OFICIAL AYUDANTE",
     "oficial principal": "OFICIAL PRINCIPAL", "of ppal": "OFICIAL PRINCIPAL", "of. ppal": "OFICIAL PRINCIPAL", "ppal": "OFICIAL PRINCIPAL",
@@ -59,25 +152,28 @@ EQUIVALENCIAS = {
     "psa": "PSA", "aux": "AUXILIAR", "auxiliar": "AUXILIAR"
 }
 
-# --- GESTIÓN DE ESTADO ---
+# --- ESTADOS ---
 if 'analisis_listo' not in st.session_state: st.session_state.analisis_listo = False
 if 'df_faltan' not in st.session_state: st.session_state.df_faltan = []
 if 'df_sobran' not in st.session_state: st.session_state.df_sobran = pd.DataFrame()
+if 'detective_candidates' not in st.session_state: st.session_state.detective_candidates = []
 if 'total_parte' not in st.session_state: st.session_state.total_parte = 0
 if 'total_lista' not in st.session_state: st.session_state.total_lista = 0
 if 'checked_items' not in st.session_state: st.session_state.checked_items = set()
-if 'confirmed_pairs' not in st.session_state: st.session_state.confirmed_pairs = set()
-if 'rejected_pairs' not in st.session_state: st.session_state.rejected_pairs = set()
+if 'confirmed_pairs' not in st.session_state: st.session_state.confirmed_pairs = {} 
+if 'rejected_pairs' not in st.session_state: st.session_state.rejected_pairs = {}
 
-# --- FUNCIONES DE LIMPIEZA Y HELPERS ---
+# --- FUNCIONES ---
+@st.cache_data
 def normalizar_jerarquia(texto):
     if pd.isna(texto): return ""
     texto_limpio = str(texto).strip().lower()
     if texto_limpio in EQUIVALENCIAS: return EQUIVALENCIAS[texto_limpio]
     for key, value in EQUIVALENCIAS.items():
         if key in texto_limpio: return value
-    return texto_limpio.upper()
+    return "" 
 
+@st.cache_data
 def limpiar_nombre(texto):
     if pd.isna(texto): return ""
     texto = str(texto)
@@ -86,50 +182,9 @@ def limpiar_nombre(texto):
     texto = re.sub(r'[^a-zA-Z\s]', '', texto)
     return texto.strip().upper()
 
-def toggle_item(unique_id):
-    if unique_id in st.session_state.checked_items:
-        st.session_state.checked_items.remove(unique_id)
-    else:
-        st.session_state.checked_items.add(unique_id)
-
-def confirmar_match(id_parte, id_lista):
-    pair_id = f"{id_parte}|{id_lista}"
-    st.session_state.confirmed_pairs.add(pair_id)
-
-def rechazar_match(id_parte, id_lista):
-    pair_id = f"{id_parte}|{id_lista}"
-    st.session_state.rejected_pairs.add(pair_id)
-
-# --- FUNCIÓN EXCEL ---
-def borrar_sobrantes_excel(archivo_original, lista_nombres_borrar):
+def leer_excel_inteligente(archivo_bytes, filename):
     try:
-        wb = openpyxl.load_workbook(archivo_original)
-        sheet_name = 'LISTA' if 'LISTA' in wb.sheetnames else wb.sheetnames[0]
-        ws = wb[sheet_name]
-        col_jerarquia = -1; col_nombre = -1; max_matches = 0
-        for col in range(1, 20):
-            matches = 0
-            for row in range(1, 30):
-                val = str(ws.cell(row=row, column=col).value).lower()
-                if any(k in val for k in EQUIVALENCIAS.keys()): matches += 1
-            if matches > max_matches: max_matches = matches; col_jerarquia = col; col_nombre = col + 1 
-        if col_jerarquia == -1: return None 
-        nombres_a_borrar_limpios = set([limpiar_nombre(n) for n in lista_nombres_borrar])
-        for row in ws.iter_rows(min_row=1, max_row=ws.max_row):
-            cell_nombre = row[col_nombre - 1] 
-            cell_jerarquia = ws.cell(row=cell_nombre.row, column=col_jerarquia)
-            cell_nombre_obj = ws.cell(row=cell_nombre.row, column=col_nombre)
-            val_nombre_limpio = limpiar_nombre(str(cell_nombre_obj.value))
-            if val_nombre_limpio in nombres_a_borrar_limpios:
-                cell_jerarquia.value = None; cell_nombre_obj.value = None
-        output = BytesIO(); wb.save(output); output.seek(0)
-        return output
-    except Exception as e: return None
-
-# --- LECTURA PANDAS ---
-def leer_excel_inteligente(archivo):
-    try:
-        xls = pd.ExcelFile(archivo)
+        xls = pd.ExcelFile(BytesIO(archivo_bytes))
         sheet_name = 'LISTA' if 'LISTA' in xls.sheet_names else xls.sheet_names[0]
         df = pd.read_excel(xls, sheet_name=sheet_name, header=None)
         best_col_idx = -1; max_matches = 0
@@ -140,241 +195,276 @@ def leer_excel_inteligente(archivo):
         if best_col_idx != -1 and max_matches > 0 and best_col_idx + 1 < len(df.columns):
             subset = df.iloc[:, [best_col_idx, best_col_idx+1]].copy()
             subset.columns = ['Jerarquia', 'Nombre']
-            def es_fila_valida(row):
-                t = str(row['Jerarquia']).lower()
-                return any(k in t for k in EQUIVALENCIAS.keys())
-            subset = subset[subset.apply(es_fila_valida, axis=1)]
             return subset
         return None
     except: return None
 
-def procesar_generico(texto_input, archivo_input):
+def procesar_input(texto_input, archivo_input):
     df = None
     if archivo_input:
-        try:
-            if archivo_input.name.endswith('csv'): df = pd.read_csv(archivo_input)
-            else: df = pd.read_excel(archivo_input)
-            if len(df.columns) >= 2: df = df.iloc[:, :2]; df.columns = ['Jerarquia', 'Nombre']
-        except: return None
+        file_bytes = archivo_input.getvalue()
+        if archivo_input.name.endswith('csv'):
+            try: df = pd.read_csv(archivo_input, header=None); df = df.iloc[:, :2]; df.columns = ['Jerarquia', 'Nombre']
+            except: pass
+        else:
+            df = leer_excel_inteligente(file_bytes, archivo_input.name)
     elif texto_input:
         try:
             df = pd.read_csv(StringIO(texto_input), sep='\t', header=None, engine='python')
-            if any(x in str(df.iloc[0, 0]).lower() for x in ['jerarquia', 'grado']):
-                 df = pd.read_csv(StringIO(texto_input), sep='\t', engine='python')
+            if len(df.columns) < 2: df = pd.read_csv(StringIO(texto_input), sep=',', header=None, engine='python')
             df = df.iloc[:, :2]; df.columns = ['Jerarquia', 'Nombre']
-        except: return None
-    return df
+        except: pass
+    
+    if df is not None and not df.empty:
+        df['j_norm'] = df['Jerarquia'].apply(normalizar_jerarquia)
+        df = df[df['j_norm'] != ""] 
+        df['n_clean'] = df['Nombre'].apply(limpiar_nombre)
+        df['unique_id'] = df['Nombre'] + "_" + df.index.astype(str)
+        return df
+    return None
 
-# --- ESTADOS DE INPUT ---
-if 'p_txt' not in st.session_state: st.session_state.p_txt = ""
-if 'l_txt' not in st.session_state: st.session_state.l_txt = ""
-if 'p_key' not in st.session_state: st.session_state.p_key = 0
-if 'l_key' not in st.session_state: st.session_state.l_key = 0
+def borrar_sobrantes_excel(archivo_original, lista_nombres_borrar):
+    try:
+        wb = openpyxl.load_workbook(archivo_original)
+        sheet_name = 'LISTA' if 'LISTA' in wb.sheetnames else wb.sheetnames[0]
+        ws = wb[sheet_name]
+        col_jerarquia = -1; col_nombre = -1; max_matches = 0
+        for col in range(1, 20):
+            matches = 0
+            for row in range(1, 50):
+                val = str(ws.cell(row=row, column=col).value).lower()
+                if any(k in val for k in EQUIVALENCIAS.keys()): matches += 1
+            if matches > max_matches: max_matches = matches; col_jerarquia = col; col_nombre = col + 1 
+        if col_jerarquia == -1: return None 
+        nombres_a_borrar_limpios = set([limpiar_nombre(n) for n in lista_nombres_borrar])
+        for row in ws.iter_rows(min_row=1, max_row=ws.max_row):
+            cell_nombre = row[col_nombre - 1]
+            if not cell_nombre.value: continue
+            val_nombre_limpio = limpiar_nombre(str(cell_nombre.value))
+            if val_nombre_limpio in nombres_a_borrar_limpios:
+                cell_jerarquia = ws.cell(row=cell_nombre.row, column=col_jerarquia)
+                cell_jerarquia.value = None; cell_nombre.value = None
+        output = BytesIO(); wb.save(output); output.seek(0)
+        return output
+    except: return None
 
-# --- FUNCIONES LIMPIEZA SEPARADAS ---
-def limpiar_parte():
-    st.session_state.p_txt = ""
-    st.session_state.p_key += 1
-    st.session_state.analisis_listo = False
-    st.session_state.confirmed_pairs = set()
-    st.session_state.rejected_pairs = set()
+def detecting_duplicados(df, nombre_origen):
+    if df is None or df.empty: return
+    duplicados = df[df.duplicated(subset=['n_clean'], keep=False)]
+    if not duplicados.empty:
+        nombres = duplicados['Nombre'].unique()
+        st.markdown(f'<div class="duplicate-alert">⚠️ <b>Duplicados en {nombre_origen}:</b> {", ".join(nombres[:3])}...</div>', unsafe_allow_html=True)
 
-def limpiar_lista():
-    st.session_state.l_txt = ""
-    st.session_state.l_key += 1
-    st.session_state.analisis_listo = False
-    st.session_state.confirmed_pairs = set()
-    st.session_state.rejected_pairs = set()
+# --- ANALISIS ---
+def calcular_analisis(df_p, df_l, umbral_det, umbral_auto):
+    sobran = df_l.copy(); sobran['found'] = False
+    faltan_temp = [] 
 
-# --- CARGA DE DATOS ---
-c1, c2 = st.columns(2)
-with c1:
-    with st.container(border=True):
-        st.subheader("📋 1. EL PARTE")
-        if st.button("🗑️ Limpiar Parte", on_click=limpiar_parte, key="cl_p"): pass
-        p_txt = st.text_area("Parte", height=68, key="p_txt", label_visibility="collapsed", placeholder="Pegar Parte...")
-        p_file = st.file_uploader("Archivo", type=["xlsx", "csv"], key=f"p_file_{st.session_state.p_key}", label_visibility="collapsed")
-with c2:
-    with st.container(border=True):
-        st.subheader("📝 2. LISTA GUARDIA")
-        if st.button("🗑️ Limpiar Lista", on_click=limpiar_lista, key="cl_l"): pass
-        l_txt = st.text_area("Lista", height=68, key="l_txt", label_visibility="collapsed", placeholder="Pegar Lista...")
-        l_file = st.file_uploader("Archivo", type=["xlsx"], key=f"l_file_{st.session_state.l_key}", label_visibility="collapsed")
+    for idx_p, row_p in df_p.iterrows():
+        candidatos = sobran[sobran['j_norm'] == row_p['j_norm']]
+        encontrado = False
+        for idx_l, row_l in candidatos.iterrows():
+            if row_l['found']: continue
+            if fuzz.token_set_ratio(row_p['n_clean'], row_l['n_clean']) >= umbral_auto:
+                encontrado = True; sobran.at[idx_l, 'found'] = True; break
+        
+        if not encontrado:
+            for idx_l, row_l in sobran.iterrows():
+                if row_l['found']: continue
+                pair_id = f"{row_p['unique_id']}|{row_l['unique_id']}"
+                if pair_id in st.session_state.confirmed_pairs:
+                    encontrado = True; sobran.at[idx_l, 'found'] = True; break
 
-st.markdown("<br>", unsafe_allow_html=True)
-with st.expander("⚙️ Ajustes de Precisión"):
-    # --- CAMBIO AQUI: DEFAULT 95 ---
-    umbral = st.slider("Exigencia Estricta", 50, 100, 95)
+        if not encontrado: faltan_temp.append(row_p)
 
-# --- LÓGICA DE ANÁLISIS CENTRALIZADA ---
-def ejecutar_analisis():
-    """Ejecuta el análisis y guarda resultados en Session State"""
-    df_p = procesar_generico(p_txt, p_file)
-    df_l = leer_excel_inteligente(l_file) if l_file else procesar_generico(l_txt, None)
+    detective_matches = [] 
+    df_sobran_reales = sobran[~sobran['found']]
+    
+    for f in faltan_temp:
+        best_match = None; best_score = 0
+        for idx_s, s in df_sobran_reales.iterrows():
+            pair_id = f"{f['unique_id']}|{s['unique_id']}"
+            if pair_id in st.session_state.rejected_pairs: continue 
+            score = fuzz.token_sort_ratio(f['n_clean'], s['n_clean'])
+            if score > umbral_det and score < umbral_auto: 
+                if score > best_score: best_score = score; best_match = s
+        if best_match is not None:
+            detective_matches.append({'falta': f, 'sobra': best_match})
 
-    if df_p is not None and df_l is not None and not df_p.empty and not df_l.empty:
-        try:
-            df_p['j_norm'] = df_p['Jerarquia'].apply(normalizar_jerarquia)
-            df_l['j_norm'] = df_l['Jerarquia'].apply(normalizar_jerarquia)
-            df_p['n_clean'] = df_p['Nombre'].apply(limpiar_nombre)
-            df_l['n_clean'] = df_l['Nombre'].apply(limpiar_nombre)
-            
-            df_p['unique_id'] = df_p['Nombre'] + "_" + df_p.index.astype(str)
-            df_l['unique_id'] = df_l['Nombre'] + "_" + df_l.index.astype(str)
+    return faltan_temp, df_sobran_reales, detective_matches
 
-            sobran = df_l.copy(); sobran['found'] = False
-            faltan_temp = [] 
+def ejecutar_analisis_completo(pf, lf):
+    with st.spinner("Procesando..."):
+        st.session_state.analisis_listo = False
+        df_p = procesar_input(st.session_state.p_txt, pf)
+        df_l = procesar_input(st.session_state.l_txt, lf)
 
-            # Comparación Estricta + Matches Manuales
-            for idx_p, row_p in df_p.iterrows():
-                candidatos = sobran[sobran['j_norm'] == row_p['j_norm']]
-                encontrado = False
-                for idx_l, row_l in candidatos.iterrows():
-                    if row_l['found']: continue
-                    if fuzz.token_set_ratio(row_p['n_clean'], row_l['n_clean']) >= umbral:
-                        encontrado = True; sobran.at[idx_l, 'found'] = True; break
-                
-                if not encontrado:
-                    for idx_l, row_l in sobran.iterrows():
-                        if row_l['found']: continue
-                        pair_id = f"{row_p['unique_id']}|{row_l['unique_id']}"
-                        if pair_id in st.session_state.confirmed_pairs:
-                            encontrado = True; sobran.at[idx_l, 'found'] = True; break
-
-                if not encontrado:
-                    faltan_temp.append(row_p)
-
-            # Lógica Detective
-            detective_matches = [] 
-            df_sobran_reales = sobran[~sobran['found']]
-            
-            for f in faltan_temp:
-                best_match = None; best_score = 0
-                for idx_s, s in df_sobran_reales.iterrows():
-                    pair_id = f"{f['unique_id']}|{s['unique_id']}"
-                    if pair_id in st.session_state.rejected_pairs: continue 
-                    
-                    score = fuzz.token_sort_ratio(f['n_clean'], s['n_clean'])
-                    if score > 50 and score < umbral: 
-                        if score > best_score: best_score = score; best_match = s
-                
-                if best_match is not None:
-                    detective_matches.append({'falta': f, 'sobra': best_match})
-
-            st.session_state.df_faltan = faltan_temp
-            st.session_state.df_sobran = df_sobran_reales
-            st.session_state.detective_candidates = detective_matches
+        if df_p is not None and df_l is not None:
+            detecting_duplicados(df_p, "PARTE")
+            detecting_duplicados(df_l, "LISTA")
+            u_auto = st.session_state.get('umbral_auto', 95)
+            u_det = st.session_state.get('umbral_det', 65)
+            faltan, sobran, detective = calcular_analisis(df_p, df_l, u_det, u_auto)
+            st.session_state.df_faltan = faltan
+            st.session_state.df_sobran = sobran
+            st.session_state.detective_candidates = detective
             st.session_state.total_parte = len(df_p)
             st.session_state.total_lista = len(df_l)
             st.session_state.analisis_listo = True
-        except Exception as e:
-            st.error(f"Error: {e}")
-            st.session_state.analisis_listo = False
+        else:
+            st.error("Error: Datos no válidos.")
 
-# --- INTERACCIONES DETECTIVE ---
-def confirmar_y_recargar(id_parte, id_lista):
-    confirmar_match(id_parte, id_lista)
-    ejecutar_analisis() 
+# --- HISTORIAL ---
+def confirmar_match(f, s, pf, lf):
+    st.session_state.confirmed_pairs[f"{f['unique_id']}|{s['unique_id']}"] = f"{f['Nombre']} ↔ {s['Nombre']}"
+    ejecutar_analisis_completo(pf, lf)
 
-def rechazar_y_recargar(id_parte, id_lista):
-    rechazar_match(id_parte, id_lista)
-    ejecutar_analisis() 
+def rechazar_match(f, s, pf, lf):
+    st.session_state.rejected_pairs[f"{f['unique_id']}|{s['unique_id']}"] = f"{f['Nombre']} ≠ {s['Nombre']}"
+    ejecutar_analisis_completo(pf, lf)
 
-# --- BOTÓN ANÁLISIS PRINCIPAL ---
+def deshacer_decision(pair_id, tipo, pf, lf):
+    if tipo == 'confirmado': del st.session_state.confirmed_pairs[pair_id]
+    elif tipo == 'rechazado': del st.session_state.rejected_pairs[pair_id]
+    ejecutar_analisis_completo(pf, lf)
+
+# --- CALLBACKS LIMPIEZA ---
+def limpiar_parte_callback():
+    st.session_state.p_txt = ""
+    st.session_state.p_key += 1
+    st.session_state.analisis_listo = False
+
+def limpiar_lista_callback():
+    st.session_state.l_txt = ""
+    st.session_state.l_key += 1
+    st.session_state.analisis_listo = False
+
+# --- UI INPUTS ---
+if 'p_key' not in st.session_state: st.session_state.p_key = 0
+if 'l_key' not in st.session_state: st.session_state.l_key = 0
+if 'p_txt' not in st.session_state: st.session_state.p_txt = ""
+if 'l_txt' not in st.session_state: st.session_state.l_txt = ""
+
+col_c1, col_c2 = st.columns(2)
+with col_c1:
+    with st.container(border=True):
+        h, b = st.columns([0.8, 0.2])
+        h.markdown("### 📋 1. EL PARTE")
+        # Usamos kind="secondary" que ahora es ROJO para borrar
+        b.button("Borrar", key="cl_p", on_click=limpiar_parte_callback, type="secondary")
+        st.session_state.p_txt = st.text_area("P", height=120, key=f"p_txt_{st.session_state.p_key}", value=st.session_state.p_txt, label_visibility="collapsed", placeholder="Pegar Parte...")
+        p_file = None 
+
+with col_c2:
+    with st.container(border=True):
+        h, b = st.columns([0.8, 0.2])
+        h.markdown("### 📝 2. LISTA GUARDIA")
+        b.button("Borrar", key="cl_l", on_click=limpiar_lista_callback, type="secondary")
+        l_file = st.file_uploader("L", type=["xlsx"], key=f"l_file_{st.session_state.l_key}", label_visibility="collapsed")
+        with st.expander("O pegar texto"):
+            st.session_state.l_txt = st.text_area("L", height=100, key=f"l_txt_{st.session_state.l_key}", value=st.session_state.l_txt, label_visibility="collapsed", placeholder="Pegar Lista...")
+
+# --- SIDEBAR ---
+with st.sidebar:
+    st.header("⚙️ Configuración")
+    st.session_state.umbral_det = st.slider("Detective", 50, 90, 65)
+    st.session_state.umbral_auto = st.slider("Automático", 80, 100, 95)
+    st.divider()
+    if st.session_state.confirmed_pairs:
+        st.caption("Unidos")
+        for pid, lbl in list(st.session_state.confirmed_pairs.items()):
+            c1, c2 = st.columns([4,1])
+            c1.caption(lbl)
+            if c2.button("↩", key=f"dc_{pid}"): deshacer_decision(pid, 'confirmado', p_file, l_file); st.rerun()
+    if st.session_state.rejected_pairs:
+        st.caption("Separados")
+        for pid, lbl in list(st.session_state.rejected_pairs.items()):
+            c1, c2 = st.columns([4,1])
+            c1.caption(lbl)
+            if c2.button("↩", key=f"dr_{pid}"): deshacer_decision(pid, 'rechazado', p_file, l_file); st.rerun()
+
+st.markdown("<br>", unsafe_allow_html=True)
 if st.button("🔍 ANALIZAR AHORA", type="primary", use_container_width=True):
-    ejecutar_analisis()
+    ejecutar_analisis_completo(p_file, l_file)
 
-# --- VISUALIZACIÓN ---
+# --- RESULTADOS ---
 if st.session_state.analisis_listo:
     st.divider()
     
-    ids_en_detective_falta = [m['falta']['unique_id'] for m in st.session_state.detective_candidates]
-    ids_en_detective_sobra = [m['sobra']['unique_id'] for m in st.session_state.detective_candidates]
+    ids_conflict_f = [m['falta']['unique_id'] for m in st.session_state.detective_candidates]
+    ids_conflict_s = [m['sobra']['unique_id'] for m in st.session_state.detective_candidates]
+    final_verde = [f for f in st.session_state.df_faltan if f['unique_id'] not in ids_conflict_f]
+    final_rojo = st.session_state.df_sobran[~st.session_state.df_sobran['unique_id'].isin(ids_conflict_s)]
 
-    lista_verde_final = [f for f in st.session_state.df_faltan if f['unique_id'] not in ids_en_detective_falta]
-    df_rojo_final = st.session_state.df_sobran[~st.session_state.df_sobran['unique_id'].isin(ids_en_detective_sobra)]
+    if st.session_state.detective_candidates:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.caption("🕵️ **CONFLICTOS DETECTADOS**")
+        h_det = st.columns([3, 0.3, 3, 1, 1])
+        h_det[0].caption("PARTE")
+        h_det[2].caption("LISTA")
+        
+        for m in st.session_state.detective_candidates:
+            f = m['falta']; s = m['sobra']
+            
+            # --- CARD: Ajuste columnas [3, 0.2, 3, 0.6, 0.6] para juntar botones ---
+            cols = st.columns([3, 0.2, 3, 0.6, 0.6], vertical_alignment="center")
+            
+            with cols[0]: st.markdown(f'<div class="conflict-container"><div class="c-badge">{f["Jerarquia"]}</div><div class="c-name">{f["Nombre"]}</div></div>', unsafe_allow_html=True)
+            with cols[1]: st.markdown('<div class="arrow-icon">↔</div>', unsafe_allow_html=True)
+            with cols[2]: st.markdown(f'<div class="conflict-container"><div class="c-badge">{s["Jerarquia"]}</div><div class="c-name">{s["Nombre"]}</div></div>', unsafe_allow_html=True)
+            with cols[3]: 
+                # MISMA = PRIMARY (Amarillo)
+                if st.button("Misma", key=f"y_{f['unique_id']}", type="primary"): confirmar_match(f, s, p_file, l_file); st.rerun()
+            with cols[4]: 
+                # DISTINTOS = SECONDARY (Rojo)
+                if st.button("Distintos", key=f"n_{f['unique_id']}", type="secondary"): rechazar_match(f, s, p_file, l_file); st.rerun()
+            st.markdown("<div style='margin-bottom: 6px;'></div>", unsafe_allow_html=True)
+
+    st.markdown("<hr>", unsafe_allow_html=True)
     
-    # Dashboard
-    m1, m2, m3, m4 = st.columns(4)
+    cr1, cr2 = st.columns(2)
+    with cr1:
+        st.markdown("### ✅ Falta Agregar")
+        if not final_verde: st.success("Lista Completa.")
+        else:
+            h = st.columns([2, 4, 1.5])
+            h[0].caption("JERARQUÍA")
+            h[1].caption("NOMBRE")
+            h[2].caption("ACCIÓN")
+            st.markdown("<hr style='margin: 0;'>", unsafe_allow_html=True)
+            for p in final_verde:
+                checked = p['unique_id'] in st.session_state.checked_items
+                r = st.columns([2, 4, 1.5], vertical_alignment="center")
+                with r[0]: st.markdown(f'<div class="unified-text">{str(p["Jerarquia"]).upper()}</div>', unsafe_allow_html=True)
+                with r[1]: 
+                    if checked: st.markdown(f'<div class="unified-text name-ready">{str(p["Nombre"]).upper()}</div>', unsafe_allow_html=True)
+                    else: st.code(str(p["Nombre"]).upper(), language="text") 
+                with r[2]: 
+                    def toggle(uid):
+                        if uid in st.session_state.checked_items: st.session_state.checked_items.remove(uid)
+                        else: st.session_state.checked_items.add(uid)
+                    
+                    # LISTO = PRIMARY (Amarillo/Check)
+                    lbl = "↩" if checked else "Listo"
+                    kind = "secondary" if checked else "primary"
+                    st.button(lbl, key=f"b_{p['unique_id']}", type=kind, on_click=toggle, args=(p['unique_id'],))
+                st.markdown("<hr style='margin: 0; opacity: 0.1;'>", unsafe_allow_html=True)
+
+    with cr2:
+        st.markdown("### ❌ Sobra / Borrar")
+        if final_rojo.empty: st.success("Limpio.")
+        else:
+            st.dataframe(final_rojo[['Jerarquia', 'Nombre']], hide_index=True, use_container_width=True, height=500)
+            if l_file is not None:
+                st.markdown("<br>", unsafe_allow_html=True)
+                xls_data = borrar_sobrantes_excel(l_file, final_rojo['Nombre'].tolist())
+                # DESCARGAR = PRIMARY (Amarillo)
+                if xls_data: st.download_button("📥 Descargar Excel Limpio", xls_data, file_name=l_file.name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    m1, m2, m3, m4, m5 = st.columns(5)
     with m1: st.metric("Parte", st.session_state.total_parte)
     with m2: st.metric("Lista", st.session_state.total_lista)
-    with m3: st.metric("Faltan", len(lista_verde_final), delta=len(lista_verde_final) if len(lista_verde_final)>0 else None)
-    with m4: st.metric("Sobran", len(df_rojo_final), delta=-len(df_rojo_final) if len(df_rojo_final)>0 else None)
-    
-    # --- ZONA DETECTIVE (AMARILLA) ---
-    if st.session_state.detective_candidates:
-        st.markdown("---")
-        st.markdown('<div class="header-yellow">🕵️ ZONA DETECTIVE (Conflictos)</div>', unsafe_allow_html=True)
-        st.info("Similitudes detectadas. Confirma si son la misma persona.")
-        
-        for match in st.session_state.detective_candidates:
-            f = match['falta']
-            s = match['sobra']
-            
-            c_izq, c_flecha, c_der, c_btn = st.columns([3, 1, 3, 2])
-            
-            with c_izq:
-                st.caption("FALTA")
-                st.markdown(f"**{f['Jerarquia']}**")
-                st.markdown(f"<div class='warning-box'>{f['Nombre']}</div>", unsafe_allow_html=True)
-            with c_flecha:
-                st.markdown("<h2 style='text-align: center; color: #999;'>?</h2>", unsafe_allow_html=True)
-            with c_der:
-                st.caption("SOBRA")
-                st.markdown(f"**{s['Jerarquia']}**")
-                st.markdown(f"<div class='warning-box'>{s['Nombre']}</div>", unsafe_allow_html=True)
-            with c_btn:
-                st.caption("DECISIÓN")
-                if st.button("✅ Son el mismo", key=f"yes_{f['unique_id']}", type="primary"):
-                    confirmar_y_recargar(f['unique_id'], s['unique_id'])
-                    st.rerun()
-                if st.button("❌ No son", key=f"no_{f['unique_id']}"):
-                    rechazar_y_recargar(f['unique_id'], s['unique_id'])
-                    st.rerun()
-            st.divider()
-
-    st.markdown("---")
-    col_res1, col_res2 = st.columns(2)
-    
-    # --- COLUMNA 1: AGREGAR (VERDE) ---
-    with col_res1:
-        st.markdown('<div class="header-green">FALTA AGREGAR</div>', unsafe_allow_html=True)
-        
-        if not lista_verde_final:
-            st.markdown('<div class="green-msg">NO HACE FALTA AGREGAR A NADIE</div>', unsafe_allow_html=True)
-        else:
-            h1, h2, h3 = st.columns([1.2, 3, 0.8])
-            h1.markdown("**JERARQUÍA**"); h2.markdown("**NOMBRE**"); h3.markdown("**LISTO**")
-            st.markdown("---")
-            
-            for p in lista_verde_final:
-                r1, r2, r3 = st.columns([1.2, 3, 0.8])
-                nombre_upper = str(p['Nombre']).upper()
-                jerarquia_upper = str(p['Jerarquia']).upper()
-                is_checked = p['unique_id'] in st.session_state.checked_items
-
-                with r1: st.markdown(f'<div class="jerarquia-text">{jerarquia_upper}</div>', unsafe_allow_html=True)
-                with r2:
-                    if is_checked: st.markdown(f'<div class="success-box">YA AGREGADO</div>', unsafe_allow_html=True)
-                    else: st.code(nombre_upper, language="text")
-                with r3:
-                    label = "↩" if is_checked else "✔"
-                    type_btn = "secondary" if is_checked else "primary"
-                    st.button(label, key=f"btn_{p['unique_id']}", type=type_btn, on_click=toggle_item, args=(p['unique_id'],))
-                st.markdown("<hr>", unsafe_allow_html=True)
-
-    # --- COLUMNA 2: BORRAR (ROJO) ---
-    with col_res2:
-        st.markdown('<div class="header-red">SOBRA / BORRAR</div>', unsafe_allow_html=True)
-        if df_rojo_final.empty:
-             st.markdown('<div class="bordo-msg">NO HACE FALTA BORRAR A NADIE</div>', unsafe_allow_html=True)
-        else:
-            st.dataframe(df_rojo_final[['Jerarquia', 'Nombre']], hide_index=True, use_container_width=True, height=400)
-            st.markdown("---")
-            if l_file is not None:
-                lista_nombres_borrar = df_rojo_final['Nombre'].tolist()
-                l_file.seek(0)
-                excel_limpio = borrar_sobrantes_excel(l_file, lista_nombres_borrar)
-                if excel_limpio:
-                    st.download_button(label="💾 DESCARGAR LISTA LIMPIA", data=excel_limpio, file_name=l_file.name, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
-            else: st.info("ℹ️ Sube un Excel para habilitar el borrado automático.")
+    with m3: st.metric("Faltan", len(final_verde))
+    with m4: st.metric("Sobran", len(final_rojo))
+    with m5: st.metric("En Duda", len(st.session_state.detective_candidates), delta_color="off")
