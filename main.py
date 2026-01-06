@@ -8,6 +8,7 @@ import openpyxl
 from copy import copy
 from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.utils.cell import range_boundaries, get_column_letter
+from openpyxl.styles import PatternFill
 import logging
 
 # --- CONFIGURACIÓN ---
@@ -172,7 +173,25 @@ def procesar_input(texto_input, archivo_input):
         return df
     return None
 
-# --- EXCEL CORE: HELPERS PARA CORRECCIÓN DE FORMATO ---
+# --- EXCEL CORE: HELPERS PARA CORRECCIÓN DE FORMATO Y COLOR ---
+
+RED_FILL = PatternFill(fill_type="solid", fgColor="FFFF0000") # Rojo Intenso
+
+def _merge_anchor(ws, row: int, col: int):
+    """Si (row,col) cae dentro de un merge, devuelve la celda ancla (min_row,min_col)."""
+    for rng in ws.merged_cells.ranges:
+        if rng.min_row <= row <= rng.max_row and rng.min_col <= col <= rng.max_col:
+            return rng.min_row, rng.min_col
+    return row, col
+
+def pintar_celda(ws, row: int, col: int, fill):
+    r, c = _merge_anchor(ws, row, col)
+    ws.cell(row=r, column=c).fill = fill
+
+def pintar_cambio(ws, row: int, col_jerarquia: int, col_nombre: int, fill=RED_FILL):
+    # pinta jerarquía + nombre (respetando merges)
+    pintar_celda(ws, row, col_jerarquia, fill)
+    pintar_celda(ws, row, col_nombre, fill)
 
 def desplazar_merges_por_insercion(ws, fila_insercion: int, cantidad: int):
     old_ranges = [str(rng) for rng in ws.merged_cells.ranges]
@@ -233,6 +252,9 @@ def borrar_sobrantes_excel(archivo_original, lista_nombres_borrar):
             if val_nombre_limpio in nombres_a_borrar_limpios:
                 ws.cell(row=cell_nombre.row, column=col_jerarquia).value = None
                 cell_nombre.value = None
+                # 🔴 Marcar cambio en rojo al borrar
+                pintar_cambio(ws, cell_nombre.row, col_jerarquia, col_nombre, RED_FILL)
+
         output = BytesIO(); wb.save(output); output.seek(0)
         return output
     except Exception as e:
@@ -265,6 +287,8 @@ def generar_excel_completo(archivo_original, lista_borrar, lista_agregar_dicts):
                 if val_nombre_limpio in nombres_a_borrar_limpios:
                     ws.cell(row=cell_nombre.row, column=col_jerarquia).value = None
                     cell_nombre.value = None
+                    # 🔴 Marcar cambio en rojo al borrar
+                    pintar_cambio(ws, cell_nombre.row, col_jerarquia, col_nombre, RED_FILL)
 
         # 2. INSERTAR
         target_row = -1
@@ -306,6 +330,9 @@ def generar_excel_completo(archivo_original, lista_borrar, lista_agregar_dicts):
                 jerarquia_corta = abreviar_jerarquia(str(persona['Jerarquia']))
                 ws.cell(row=current_row, column=col_jerarquia).value = jerarquia_corta
                 ws.cell(row=current_row, column=col_nombre).value = str(persona['Nombre']).upper()
+                
+                # 🔴 Marcar cambio en rojo al agregar (DESPUÉS DE COPIAR ESTILOS)
+                pintar_cambio(ws, current_row, col_jerarquia, col_nombre, RED_FILL)
 
         output = BytesIO(); wb.save(output); output.seek(0)
         return output
