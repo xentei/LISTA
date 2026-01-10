@@ -10,10 +10,22 @@ from openpyxl.worksheet.cell_range import MultiCellRange
 from openpyxl.utils.cell import range_boundaries, get_column_letter
 from openpyxl.styles import PatternFill
 import logging
+import base64
+import os
 
 # --- CONFIGURACIÓN ---
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
 st.set_page_config(page_title="Control PSA V33.0", layout="wide", page_icon="🛡️")
+
+# --- FUNCIONES AUXILIARES (IMAGEN) ---
+def get_img_as_base64(file_path):
+    """Lee una imagen local y la convierte a base64 para HTML"""
+    try:
+        with open(file_path, "rb") as f:
+            data = f.read()
+        return base64.b64encode(data).decode()
+    except Exception:
+        return None
 
 # --- ESTILOS CSS ---
 st.markdown("""
@@ -69,6 +81,50 @@ st.markdown("""
         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
     }
     .name-ready { background-color: rgba(34, 197, 94, 0.2); color: #4ade80; border-radius: 4px; padding: 2px 8px; width: 100%; }
+
+    /* 5. TARJETA DE ÉXITO PROFESIONAL (HUD STYLE CON GIF) */
+    .success-card {
+        background: linear-gradient(90deg, rgba(6,78,59,0.9) 0%, rgba(16,185,129,0.1) 100%);
+        border-left: 5px solid #10B981;
+        border-radius: 4px;
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+    }
+    .success-gif-container {
+        width: 70px; /* TAMAÑO FIJO CHICO */
+        height: 70px;
+        margin-right: 20px;
+        border-radius: 50%;
+        overflow: hidden; /* Recorta el gif si es cuadrado para hacerlo redondo */
+        border: 2px solid #10B981;
+        box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #000;
+    }
+    .success-gif-img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover; /* Asegura que cubra todo el circulo */
+    }
+    .success-title {
+        color: #10B981;
+        font-size: 18px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin: 0;
+    }
+    .success-desc {
+        color: #D1FAE5;
+        font-size: 14px;
+        margin: 0;
+        opacity: 0.9;
+    }
 
     /* UTILS */
     .stCode { font-family: sans-serif !important; }
@@ -472,6 +528,33 @@ if st.session_state.analisis_listo:
     final_verde = [f for f in st.session_state.df_faltan if f['unique_id'] not in ids_conflict_f]
     final_rojo = st.session_state.df_sobran[~st.session_state.df_sobran['unique_id'].isin(ids_conflict_s)]
 
+    # --- ZONA DE ESTADO PROFESIONAL (HUD STYLE + GIF) ---
+    if not final_verde and final_rojo.empty and not st.session_state.detective_candidates:
+        # 1. Popups
+        st.toast("VALIDACIÓN EXITOSA: Datos cruzados.", icon="🛡️")
+        
+        # 2. Leer GIF Local y convertir a Base64 para mostrarlo en HTML
+        gif_html = ""
+        gif_b64 = get_img_as_base64("ok.gif") # Busca 'ok.gif' en la raíz
+        
+        if gif_b64:
+            # Si encuentra el gif, muestra la version animada
+            icon_block = f'<div class="success-gif-container"><img src="data:image/gif;base64,{gif_b64}" class="success-gif-img"></div>'
+        else:
+            # Fallback por si no encuentra el archivo: Muestra Icono Texto
+            icon_block = '<div class="success-gif-container" style="background:transparent; border:none; font-size:40px;">✅</div>'
+
+        # 3. Renderizar Tarjeta
+        st.markdown(f"""
+        <div class="success-card">
+            {icon_block}
+            <div>
+                <p class="success-title">CONTROL DE PERSONAL: SIN NOVEDAD</p>
+                <p class="success-desc">Integridad de datos verificada al 100%. Parte y Lista coinciden.</p>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
     # --- ZONA DE DESCARGA ---
     if l_file is not None:
         st.markdown("### 📥 ACCIONES Y DESCARGAS")
@@ -488,7 +571,6 @@ if st.session_state.analisis_listo:
         with c2:
             st.caption("Opción B: Actualizar Todo (Borrar + Agregar)")
             l_file.seek(0)
-            # PASAMOS LAS 3 COSAS: Archivo + Lista Borrar + Lista Agregar
             xls_full = generar_excel_completo(l_file, final_rojo['Nombre'].tolist(), final_verde)
             if xls_full:
                 st.download_button("🔄 Actualizar Todo", xls_full, file_name=f"FINAL_{l_file.name}", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", type="primary", use_container_width=True)
